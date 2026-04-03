@@ -19,7 +19,23 @@ class ApiTests(unittest.TestCase):
     def test_health_endpoint(self) -> None:
         response = self.client.get("/health")
         self.assertEqual(response.status_code, 200)
-        self.assertEqual(response.json()["status"], "ok")
+        self.assertEqual(response.json()["status"], "healthy")
+
+    def test_metadata_schema_and_mcp_endpoints_exist(self) -> None:
+        metadata_response = self.client.get("/metadata")
+        self.assertEqual(metadata_response.status_code, 200)
+        self.assertEqual(metadata_response.json()["name"], "data-cleaning-env")
+
+        schema_response = self.client.get("/schema")
+        self.assertEqual(schema_response.status_code, 200)
+        schema_payload = schema_response.json()
+        self.assertIn("action", schema_payload)
+        self.assertIn("observation", schema_payload)
+        self.assertIn("state", schema_payload)
+
+        mcp_response = self.client.post("/mcp", json={"jsonrpc": "2.0", "id": 1, "method": "ping"})
+        self.assertEqual(mcp_response.status_code, 200)
+        self.assertEqual(mcp_response.json()["jsonrpc"], "2.0")
 
     def test_tasks_endpoint_lists_all_tasks(self) -> None:
         response = self.client.get("/tasks")

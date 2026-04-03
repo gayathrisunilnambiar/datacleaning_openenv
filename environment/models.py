@@ -241,8 +241,33 @@ class TaskInfoModel(StrictBaseModel):
 class HealthResponse(StrictBaseModel):
     """Simple liveness payload used by local and deployed health checks."""
 
-    status: Literal["ok"] = "ok"
+    status: Literal["healthy"] = "healthy"
     version: str = "1.0.0"
+
+
+class MetadataResponse(StrictBaseModel):
+    """High-level environment metadata for validator and UI discovery."""
+
+    name: str
+    description: str
+    version: str
+    tags: list[str] = Field(default_factory=list)
+
+
+class SchemaResponse(StrictBaseModel):
+    """JSON schema bundle for the main action and state contracts."""
+
+    action: dict[str, object]
+    observation: dict[str, object]
+    state: dict[str, object]
+
+
+class JsonRpcResponse(StrictBaseModel):
+    """Minimal JSON-RPC response envelope for MCP reachability checks."""
+
+    jsonrpc: Literal["2.0"] = "2.0"
+    id: str | int | None = None
+    result: dict[str, object] = Field(default_factory=dict)
 
 
 class ValidateChecks(StrictBaseModel):

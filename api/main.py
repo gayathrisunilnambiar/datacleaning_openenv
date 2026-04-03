@@ -12,8 +12,13 @@ from environment.env import DataCleaningEnv
 from environment.graders import GRADER_REGISTRY
 from environment.models import (
     HealthResponse,
+    JsonRpcResponse,
+    MetadataResponse,
+    Observation,
     ResetRequest,
     ResetResponse,
+    Action,
+    SchemaResponse,
     StateResponse,
     StepRequest,
     StepResult,
@@ -26,6 +31,9 @@ from environment.tasks import TASK_REGISTRY
 
 SESSION_TTL = timedelta(minutes=30)
 APP_VERSION = "1.0.0"
+APP_NAME = "data-cleaning-env"
+APP_DESCRIPTION = "Deterministic multi-task benchmark for iterative tabular data cleaning agents."
+APP_TAGS = ["openenv", "data-cleaning", "tabular", "benchmark"]
 
 
 @dataclass
@@ -66,6 +74,27 @@ def health() -> HealthResponse:
     return HealthResponse(version=APP_VERSION)
 
 
+@app.get("/metadata", response_model=MetadataResponse)
+def metadata() -> MetadataResponse:
+    """Return top-level metadata for OpenEnv validators and registry UIs."""
+    return MetadataResponse(
+        name=APP_NAME,
+        description=APP_DESCRIPTION,
+        version=APP_VERSION,
+        tags=APP_TAGS,
+    )
+
+
+@app.get("/schema", response_model=SchemaResponse)
+def schema() -> SchemaResponse:
+    """Expose JSON schemas for the core HTTP contracts."""
+    return SchemaResponse(
+        action=Action.model_json_schema(),
+        observation=Observation.model_json_schema(),
+        state=StateResponse.model_json_schema(),
+    )
+
+
 @app.get("/tasks", response_model=list[TaskInfoModel])
 def tasks() -> list[TaskInfoModel]:
     """List all available tasks with minimal metadata."""
@@ -104,6 +133,25 @@ def step(payload: StepRequest) -> StepResult:
     """Apply one action to an active environment session."""
     record = _get_session(payload.session_id)
     return record.env.step(payload.action)
+
+
+@app.post("/mcp", response_model=JsonRpcResponse)
+def mcp(payload: dict[str, object] | None = None) -> JsonRpcResponse:
+    """Minimal JSON-RPC shim so validators can detect MCP reachability."""
+    request_id = None
+    if isinstance(payload, dict):
+        candidate = payload.get("id")
+        if isinstance(candidate, (str, int)) or candidate is None:
+            request_id = candidate
+
+    return JsonRpcResponse(
+        id=request_id,
+        result={
+            "name": APP_NAME,
+            "transport": "http",
+            "message": "MCP shim reachable. Use the HTTP environment endpoints for interaction.",
+        },
+    )
 
 
 @app.post("/validate", response_model=ValidateResponse)

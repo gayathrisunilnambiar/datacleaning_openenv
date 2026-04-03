@@ -7,6 +7,7 @@ from datetime import datetime, timedelta, timezone
 from uuid import uuid4
 
 from fastapi import FastAPI, HTTPException, Query
+from pydantic import BaseModel
 
 from environment.env import DataCleaningEnv
 from environment.graders import GRADER_REGISTRY
@@ -44,8 +45,47 @@ class SessionRecord:
     last_accessed: datetime
 
 
+class RootResponse(BaseModel):
+    """Top-level API directory returned by GET /."""
+
+    name: str
+    version: str
+    description: str
+    status: str
+    endpoints: dict[str, str]
+    baseline_scores: dict[str, float]
+
+
 app = FastAPI(title="DataCleaningEnv", version=APP_VERSION)
 _SESSIONS: dict[str, SessionRecord] = {}
+
+
+@app.get("/", response_model=RootResponse, summary="API Directory", tags=["info"])
+def root() -> RootResponse:
+    """Return a clean API directory with every available endpoint."""
+    return RootResponse(
+        name=APP_NAME,
+        version=APP_VERSION,
+        description=APP_DESCRIPTION,
+        status="ok",
+        endpoints={
+            "root": "GET /",
+            "health": "GET /health",
+            "metadata": "GET /metadata",
+            "schema": "GET /schema",
+            "tasks": "GET /tasks",
+            "state": "GET /state",
+            "reset": "POST /reset",
+            "step": "POST /step",
+            "mcp": "POST /mcp",
+            "validate": "POST /validate",
+        },
+        baseline_scores={
+            "easy": 1.0000,
+            "medium": 0.9811,
+            "hard": 0.8332,
+        },
+    )
 
 
 def _utc_now() -> datetime:

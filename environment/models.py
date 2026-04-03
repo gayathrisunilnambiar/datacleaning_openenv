@@ -1,16 +1,22 @@
-"""
-Pydantic v2 models for the Data Cleaning OpenEnv environment.
-
-Defines the core data structures used across the environment:
-ActionType enum, Action, Observation, StepResult, and RewardBreakdown.
-"""
+"""Pydantic models shared across the environment, API, and baseline agent."""
 
 from __future__ import annotations
 
 from enum import Enum
-from typing import Optional
+from typing import Literal
 
-from pydantic import BaseModel, Field, field_validator, model_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
+
+
+_FILL_NULL_STRATEGIES = {"mean", "median", "mode", "constant"}
+_CAST_DTYPES = {"int", "float", "str", "bool", "datetime"}
+_REMOVE_OUTLIER_METHODS = {"iqr", "zscore"}
+
+
+class StrictBaseModel(BaseModel):
+    """Base model that rejects undeclared fields."""
+
+    model_config = ConfigDict(extra="forbid")
 
 
 # ---------------------------------------------------------------------------
@@ -43,69 +49,74 @@ _COLUMN_REQUIRED_ACTIONS: set[ActionType] = {
     ActionType.normalize_values,
 }
 
-# Actions that need extra parameters via the ``params`` dict.
-_PARAMS_REQUIRED_ACTIONS: dict[ActionType, list[str]] = {
-    ActionType.fill_nulls: ["strategy"],        # e.g. "mean", "median", "mode", "constant"
-    ActionType.cast_column: ["target_dtype"],    # e.g. "int64", "float64", "str"
-    ActionType.rename_column: ["new_name"],      # the new column name
-}
-
-
-class Action(BaseModel):
-    """A single cleaning action issued by the agent.
-
-    Attributes:
-        action_type: The type of cleaning operation to perform.
-        column: Target column name (required for column-specific actions).
-        params: Extra parameters needed by some action types.
-    """
+class Action(StrictBaseModel):
+    """A single cleaning action issued by the agent."""
 
     action_type: ActionType
-    column: Optional[str] = Field(default=None, description="Target column name")
-    params: Optional[dict] = Field(default=None, description="Extra parameters for the action")
-
-    # ----- field-level validators ------------------------------------------
+    column: str | None = Field(default=None, description="Target column name")
+    params: dict[str, object] | None = Field(
+        default=None,
+        description="Extra action parameters. Contents vary by action_type.",
+    )
 
     @field_validator("column", mode="before")
     @classmethod
-    def _strip_column_name(cls, v: Optional[str]) -> Optional[str]:
-        """Strip leading/trailing whitespace from column names."""
-        if isinstance(v, str):
-            v = v.strip()
-            if v == "":
+    def _strip_column_name(cls, value: str | None) -> str | None:
+        if isinstance(value, str):
+            value = value.strip()
+            if not value:
                 return None
-        return v
-
-    # ----- model-level validators ------------------------------------------
+        return value
 
     @model_validator(mode="after")
     def _validate_action_constraints(self) -> "Action":
-        """Ensure column and params are provided where required."""
-        # Column requirement check
+        """Validate action-specific requirements without over-restricting callers."""
         if self.action_type in _COLUMN_REQUIRED_ACTIONS and self.column is None:
             raise ValueError(
-                f"Action '{self.action_type.value}' requires a 'column' to be specified."
+                f"Action '{self.action_type.value}' requires a non-empty 'column'."
             )
 
-        # Params requirement check
-        if self.action_type in _PARAMS_REQUIRED_ACTIONS:
-            required_keys = _PARAMS_REQUIRED_ACTIONS[self.action_type]
-            if self.params is None:
-                raise ValueError(
-                    f"Action '{self.action_type.value}' requires params with keys: {required_keys}"
-                )
-            missing = [k for k in required_keys if k not in self.params]
-            if missing:
-                raise ValueError(
-                    f"Action '{self.action_type.value}' is missing required param keys: {missing}"
-                )
+        params = dict(self.params or {})
 
-        # Submit should not carry column or params
-        if self.action_type == ActionType.submit:
-            if self.column is not None or self.params is not None:
+        if self.action_type == ActionType.fill_nulls:
+            strategy = str(params.get("strategy", "")).strip().lower()
+            if strategy not in _FILL_NULL_STRATEGIES:
                 raise ValueError(
-                    "'submit' action should not include 'column' or 'params'."
+                    f"'fill_nulls' requires strategy in {sorted(_FILL_NULL_STRATEGIES)}."
                 )
+            if strategy == "constant" and "value" not in params:
+                raise ValueError("'fill_nulls' with strategy='constant' requires params['value'].")
+
+        if self.action_type == ActionType.cast_column:
+            dtype_value = params.get("dtype", params.get("target_dtype"))
+            dtype_name = str(dtype_value or "").strip().lower()
+            if dtype_name not in _CAST_DTYPES:
+                raise ValueError(f"'cast_column' requires dtype in {sorted(_CAST_DTYPES)}.")
+
+        if self.action_type == ActionType.remove_outliers:
+            method = str(params.get("method", "")).strip().lower()
+            if method not in _REMOVE_OUTLIER_METHODS:
+                raise ValueError(
+                    f"'remove_outliers' requires method in {sorted(_REMOVE_OUTLIER_METHODS)}."
+                )
+            if "threshold" in params:
+                try:
+                    float(params["threshold"])
+                except (TypeError, ValueError) as exc:
+                    raise ValueError("'remove_outliers' threshold must be numeric.") from exc
+
+        if self.action_type == ActionType.rename_column:
+            new_name = str(params.get("new_name", "")).strip()
+            if not new_name:
+                raise ValueError("'rename_column' requires a non-empty params['new_name'].")
+
+        if self.action_type == ActionType.normalize_values:
+            mapping = params.get("mapping")
+            if not isinstance(mapping, dict) or not mapping:
+                raise ValueError("'normalize_values' requires a non-empty params['mapping'].")
+
+        if self.action_type == ActionType.submit and (self.column is not None or self.params):
+            raise ValueError("'submit' must not include 'column' or 'params'.")
 
         return self
 
@@ -114,7 +125,7 @@ class Action(BaseModel):
 # Observation
 # ---------------------------------------------------------------------------
 
-class Observation(BaseModel):
+class Observation(StrictBaseModel):
     """Observable state returned to the agent after each step.
 
     Attributes:
@@ -129,19 +140,21 @@ class Observation(BaseModel):
 
     task_id: str
     step_number: int = Field(ge=0)
-    current_df: list[dict]
+    current_df: list[dict[str, object | None]]
     dirty_columns: list[str]
     columns_meta: dict[str, str]
     episode_reward_so_far: float = 0.0
     done: bool = False
+    max_steps: int = Field(ge=1)
+    task_description: str
 
 
 # ---------------------------------------------------------------------------
 # RewardBreakdown
 # ---------------------------------------------------------------------------
 
-class RewardBreakdown(BaseModel):
-    """Itemised breakdown of the reward for a single step.
+class RewardBreakdown(StrictBaseModel):
+    """Itemized breakdown of the reward for a single step.
 
     Attributes:
         column_improvement: Partial credit for columns that moved closer to ground truth.
@@ -160,7 +173,19 @@ class RewardBreakdown(BaseModel):
 # StepResult
 # ---------------------------------------------------------------------------
 
-class StepResult(BaseModel):
+class StepInfo(StrictBaseModel):
+    """Auxiliary diagnostics returned alongside each step result."""
+
+    action_applied: bool = False
+    reward_breakdown: RewardBreakdown = Field(default_factory=RewardBreakdown)
+    column_deltas: dict[str, float] = Field(default_factory=dict)
+    grader_score: float | None = None
+    error: str | None = None
+    steps_taken: int | None = None
+    max_steps_reached: bool = False
+
+
+class StepResult(StrictBaseModel):
     """Composite result returned by ``DataCleaningEnv.step()``.
 
     Attributes:
@@ -173,4 +198,65 @@ class StepResult(BaseModel):
     observation: Observation
     reward: float
     done: bool
-    info: dict
+    info: StepInfo
+
+
+class ResetRequest(StrictBaseModel):
+    """Request model for starting a new episode."""
+
+    task_id: str
+    session_id: str | None = None
+
+
+class ResetResponse(StrictBaseModel):
+    """Response model returned by ``POST /reset``."""
+
+    session_id: str
+    observation: Observation
+
+
+class StepRequest(StrictBaseModel):
+    """Request model for applying one action."""
+
+    session_id: str
+    action: Action
+
+
+class StateResponse(StrictBaseModel):
+    """Response model returned by ``GET /state``."""
+
+    session_id: str
+    observation: Observation
+
+
+class TaskInfoModel(StrictBaseModel):
+    """Task metadata surfaced via the HTTP API."""
+
+    task_id: str
+    difficulty: str
+    description: str
+    max_steps: int
+
+
+class HealthResponse(StrictBaseModel):
+    """Simple liveness payload used by local and deployed health checks."""
+
+    status: Literal["ok"] = "ok"
+    version: str = "1.0.0"
+
+
+class ValidateChecks(StrictBaseModel):
+    """Detailed results for the ``/validate`` self-check endpoint."""
+
+    reset: bool = False
+    step: bool = False
+    state: bool = False
+    graders: dict[str, float] = Field(default_factory=dict)
+    errors: list[str] = Field(default_factory=list)
+
+
+class ValidateResponse(StrictBaseModel):
+    """Top-level response for ``POST /validate``."""
+
+    passed: bool
+    checks: ValidateChecks

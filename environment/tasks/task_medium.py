@@ -26,6 +26,7 @@ class MediumTask(BaseTask):
 
     task_id: str = "medium"
     difficulty: str = "medium"
+    max_steps: int = 30
     description: str = (
         "Sales transactions with mixed string formats in numeric columns, "
         "inconsistent date formats, arithmetic errors in 'total', "
@@ -152,6 +153,7 @@ class MediumTask(BaseTask):
         return {
             "task_id": self.task_id,
             "difficulty": self.difficulty,
+            "max_steps": self.max_steps,
             "description": self.description,
             "column_types": {
                 "txn_id": "object",

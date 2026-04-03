@@ -29,6 +29,7 @@ class HardTask(BaseTask):
 
     task_id: str = "hard"
     difficulty: str = "hard"
+    max_steps: int = 40
     description: str = (
         "Hospital admissions with duplicates, missing values, mixed date "
         "formats, inconsistent gender labels, mixed weight units, "
@@ -198,6 +199,7 @@ class HardTask(BaseTask):
         return {
             "task_id": self.task_id,
             "difficulty": self.difficulty,
+            "max_steps": self.max_steps,
             "description": self.description,
             "column_types": {
                 "patient_id": "object",

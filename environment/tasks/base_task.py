@@ -20,11 +20,13 @@ class BaseTask(ABC):
         task_id: Unique short identifier for the task (e.g. "easy").
         difficulty: Human-readable difficulty label ("easy" / "medium" / "hard").
         description: One-line summary of what makes this dataset dirty.
+        max_steps: Maximum number of agent actions allowed in one episode.
     """
 
     task_id: str
     difficulty: str
     description: str
+    max_steps: int
 
     # ------------------------------------------------------------------
     # Abstract interface
@@ -56,6 +58,7 @@ class BaseTask(ABC):
             - task_id   (str)
             - difficulty (str)
             - description (str)
+            - max_steps  (int)
             - column_types (dict[str, str]) — column name → expected dtype
             - num_rows  (int) — row count of the ground truth
             - num_cols  (int) — column count of the ground truth

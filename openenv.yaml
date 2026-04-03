@@ -1,0 +1,35 @@
+name: data-cleaning-env
+version: 1.0.0
+description: Deterministic multi-task benchmark for iterative tabular data cleaning agents.
+tags:
+  - openenv
+  - data-cleaning
+  - tabular
+  - benchmark
+reward_range:
+  - -0.05
+  - 1.30
+endpoints:
+  reset: POST /reset
+  step: POST /step
+  state: GET /state
+  tasks: GET /tasks
+  health: GET /health
+  validate: POST /validate
+tasks:
+  - id: easy
+    difficulty: easy
+    max_steps: 20
+  - id: medium
+    difficulty: medium
+    max_steps: 30
+  - id: hard
+    difficulty: hard
+    max_steps: 40
+baseline_scores:
+  easy: 1.00
+  medium: 0.98
+  hard: 0.83
+docker:
+  build: docker build -t data-cleaning-env .
+  run: docker run -p 7860:7860 data-cleaning-env

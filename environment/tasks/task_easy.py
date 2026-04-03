@@ -24,6 +24,7 @@ class EasyTask(BaseTask):
 
     task_id: str = "easy"
     difficulty: str = "easy"
+    max_steps: int = 20
     description: str = (
         "Employee records with duplicate rows and missing values "
         "in the 'age' and 'salary' columns."
@@ -111,6 +112,7 @@ class EasyTask(BaseTask):
         return {
             "task_id": self.task_id,
             "difficulty": self.difficulty,
+            "max_steps": self.max_steps,
             "description": self.description,
             "column_types": {
                 "id": "int64",

@@ -204,7 +204,7 @@ class StepResult(StrictBaseModel):
 class ResetRequest(StrictBaseModel):
     """Request model for starting a new episode."""
 
-    task_id: str
+    task_id: str = "easy"
     session_id: str | None = None
 
 

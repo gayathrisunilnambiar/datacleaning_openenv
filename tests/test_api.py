@@ -41,8 +41,7 @@ class ApiTests(unittest.TestCase):
         response = self.client.get("/tasks")
         self.assertEqual(response.status_code, 200)
         payload = response.json()
-        self.assertEqual(len(payload), 3)
-        self.assertEqual(sorted(item["task_id"] for item in payload), ["easy", "hard", "medium"])
+        self.assertEqual(sorted(item["task_id"] for item in payload), ["easy", "hard", "medium", "random"])
 
     def test_reset_step_and_state_flow(self) -> None:
         reset_response = self.client.post("/reset", json={"task_id": "easy"})

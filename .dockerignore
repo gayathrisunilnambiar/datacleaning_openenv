@@ -1,0 +1,10 @@
+.git
+.dist
+.venv
+__pycache__
+*.py[cod]
+*.pyo
+*.pyd
+tests
+PROJECT_STATUS_AND_PLAN.md
+

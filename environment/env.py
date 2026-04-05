@@ -27,12 +27,17 @@ class EnvironmentConfig:
 class DataCleaningEnv:
     """Interactive single-episode environment for one data-cleaning task."""
 
-    def __init__(self, task_id: str, config: EnvironmentConfig | None = None) -> None:
+    def __init__(self, task_id: str, config: EnvironmentConfig | None = None, seed: int | None = None) -> None:
         if task_id not in TASK_REGISTRY:
             raise ValueError(f"Unknown task_id '{task_id}'. Available tasks: {sorted(TASK_REGISTRY)}")
 
-        self.task: BaseTask = TASK_REGISTRY[task_id]()
-        self.grader = GRADER_REGISTRY[task_id]()
+        if task_id == "random":
+            # Random task needs a seed; grader must share the same task instance
+            self.task: BaseTask = TASK_REGISTRY[task_id](seed=seed)
+            self.grader = GRADER_REGISTRY[task_id](task=self.task)
+        else:
+            self.task = TASK_REGISTRY[task_id]()
+            self.grader = GRADER_REGISTRY[task_id]()
         self.config = config or EnvironmentConfig()
 
         self.current_df = pd.DataFrame()
@@ -55,6 +60,7 @@ class DataCleaningEnv:
         self.step_number = 0
         self.episode_reward = 0.0
         self.done = False
+        self.initial_similarity = self.grader.partial_score(self.current_df)
         return self.state()
 
     def state(self) -> Observation:
@@ -74,11 +80,14 @@ class DataCleaningEnv:
     def step(self, action: Action | dict[str, object]) -> StepResult:
         """Apply one cleaning action and return the resulting transition."""
         if self.done:
+            current_partial = self.grader.partial_score(self.current_df)
             info = StepInfo(
                 error="Episode already completed.",
                 steps_taken=self.step_number,
                 grader_score=self.grader.score(self.current_df),
                 max_steps_reached=self.step_number >= self.max_steps,
+                partial_score=current_partial,
+                dirty_columns_remaining=len(self.grader.dirty_columns(self.current_df)),
             )
             observation = self.state()
             return StepResult(observation=observation, reward=0.0, done=True, info=info)
@@ -98,6 +107,8 @@ class DataCleaningEnv:
 
         if action_obj.action_type == ActionType.submit:
             submit_score = self.grader.score(self.current_df)
+            column_scores = self.grader.column_scores(self.current_df)
+            current_partial = self.grader.partial_score(self.current_df)
             reward_breakdown = RewardBreakdown(
                 submit_bonus=(
                     self.config.submit_bonus_value
@@ -117,6 +128,16 @@ class DataCleaningEnv:
                 grader_score=submit_score,
                 steps_taken=self.step_number,
                 max_steps_reached=self.step_number >= self.max_steps,
+                # Enriched — every step
+                column_deltas={col: 0.0 for col in column_scores},
+                partial_score=current_partial,
+                dirty_columns_remaining=len(self.grader.dirty_columns(self.current_df)),
+                # Enriched — submit only
+                final_score=submit_score,
+                grader_breakdown=column_scores,
+                steps_used=self.step_number,
+                steps_budget=self.max_steps,
+                improvement_from_start=round(current_partial - self.initial_similarity, 6),
             )
             observation = self.state()
             return StepResult(
@@ -174,6 +195,9 @@ class DataCleaningEnv:
             self.done = True
             grader_score = self.grader.score(self.current_df)
 
+        current_partial = self.grader.partial_score(self.current_df)
+        dirty_remaining = len(self.grader.dirty_columns(self.current_df))
+
         info = StepInfo(
             action_applied=changed,
             reward_breakdown=reward_breakdown,
@@ -182,7 +206,21 @@ class DataCleaningEnv:
             error=error,
             steps_taken=self.step_number if self.done else None,
             max_steps_reached=max_steps_reached,
+            # Enriched — every step
+            partial_score=current_partial,
+            dirty_columns_remaining=dirty_remaining,
         )
+
+        # If episode ended due to max_steps, also attach submit-like diagnostics
+        if max_steps_reached:
+            column_scores = self.grader.column_scores(self.current_df)
+            info.final_score = grader_score
+            info.grader_breakdown = column_scores
+            info.steps_used = self.step_number
+            info.steps_budget = self.max_steps
+            info.improvement_from_start = round(
+                current_partial - self.initial_similarity, 6
+            )
 
         observation = self.state()
         return StepResult(

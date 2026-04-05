@@ -184,6 +184,17 @@ class StepInfo(StrictBaseModel):
     steps_taken: int | None = None
     max_steps_reached: bool = False
 
+    # ── Enriched diagnostics (every step) ──
+    partial_score: float | None = None
+    dirty_columns_remaining: int | None = None
+
+    # ── Enriched diagnostics (submit only) ──
+    final_score: float | None = None
+    grader_breakdown: dict[str, float] | None = None
+    steps_used: int | None = None
+    steps_budget: int | None = None
+    improvement_from_start: float | None = None
+
 
 class StepResult(StrictBaseModel):
     """Composite result returned by ``DataCleaningEnv.step()``.
@@ -206,6 +217,7 @@ class ResetRequest(StrictBaseModel):
 
     task_id: str = "easy"
     session_id: str | None = None
+    seed: int | None = None
 
 
 class ResetResponse(StrictBaseModel):

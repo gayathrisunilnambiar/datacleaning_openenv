@@ -27,11 +27,12 @@ The result is a small, deterministic benchmark that is useful for testing real a
 
 ## Task suite
 
-The environment ships with three seeded tasks:
+The environment ships with four tasks:
 
 - `easy`: employee records with duplicate rows and missing numeric values
 - `medium`: sales transactions with mixed numeric formats, mixed date formats, corrupted totals, and price outliers
 - `hard`: hospital admissions with row duplication, missing values, mixed date formats, inconsistent category labels, mixed weight units, blood-type typos, and heterogeneous boolean encoding
+- `random`: procedurally generated task with random domain and data quality issues. Unique each episode; pass a `seed` for reproducibility.
 
 ## Design overview
 
@@ -134,9 +135,12 @@ Request:
 
 ```json
 {
-  "task_id": "easy"
+  "task_id": "random",
+  "seed": 42
 }
 ```
+
+*Note: `seed` is optional and useful for reproducing issues, especially for the `random` task.*
 
 ### `POST /step`
 
@@ -224,4 +228,4 @@ Verified locally:
 
 - Sessions live in memory and expire after 30 minutes of inactivity.
 - Invalid actions do not crash the server; they produce safe typed failures.
-- Task generation is deterministic because each task uses a fixed seed.
+- Task generation is deterministic because each task uses a fixed seed, while the `random` task is fully procedural (and reproducible via the optional `seed` parameter).

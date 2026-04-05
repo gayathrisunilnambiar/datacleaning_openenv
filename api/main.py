@@ -140,22 +140,37 @@ def tasks() -> list[TaskInfoModel]:
     """List all available tasks with minimal metadata."""
     task_models: list[TaskInfoModel] = []
     for task_id in sorted(TASK_REGISTRY):
-        task = TASK_REGISTRY[task_id]()
-        task_models.append(
-            TaskInfoModel(
-                task_id=task.task_id,
-                difficulty=task.difficulty,
-                description=task.description,
-                max_steps=task.max_steps,
+        if task_id == "random":
+            # Stable listing — avoid generating data just for metadata
+            task_models.append(
+                TaskInfoModel(
+                    task_id="random",
+                    difficulty="variable",
+                    description=(
+                        "Procedurally generated task with random domain and "
+                        "data quality issues. Unique each episode; pass a seed "
+                        "for reproducibility."
+                    ),
+                    max_steps=25,
+                )
             )
-        )
+        else:
+            task = TASK_REGISTRY[task_id]()
+            task_models.append(
+                TaskInfoModel(
+                    task_id=task.task_id,
+                    difficulty=task.difficulty,
+                    description=task.description,
+                    max_steps=task.max_steps,
+                )
+            )
     return task_models
 
 
 @app.post("/reset", response_model=ResetResponse)
 def reset(payload: ResetRequest) -> ResetResponse:
     """Create a new environment session and return the initial observation."""
-    env = DataCleaningEnv(payload.task_id)
+    env = DataCleaningEnv(payload.task_id, seed=payload.seed)
     session_id = payload.session_id or str(uuid4())
     _SESSIONS[session_id] = SessionRecord(env=env, last_accessed=_utc_now())
     return ResetResponse(session_id=session_id, observation=env.state())

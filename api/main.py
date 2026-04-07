@@ -327,8 +327,9 @@ def tasks() -> list[TaskInfoModel]:
 
 
 @app.post("/reset", response_model=ResetResponse)
-def reset(payload: ResetRequest) -> ResetResponse:
+def reset(payload: ResetRequest | None = None) -> ResetResponse:
     """Create a new environment session and return the initial observation."""
+    payload = payload or ResetRequest()
     session_id = payload.session_id or str(uuid4())
     bind_request_context(session_id=session_id, task_id=payload.task_id)
     if payload.task_id not in TASK_REGISTRY:

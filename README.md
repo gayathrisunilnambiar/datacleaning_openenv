@@ -105,27 +105,37 @@ Run the test suite:
 
 ## Live LLM mode
 
-`inference.py` supports chat-completions-compatible providers through the OpenAI SDK interface.
-
-Gemini example:
+`inference.py` uses the OpenAI Python client for all LLM calls and expects these environment variables:
 
 ```powershell
-$env:GEMINI_API_KEY="your-key"
-.\.venv\Scripts\python inference.py --provider gemini --model gemini-2.5-flash
+$env:API_BASE_URL="https://router.huggingface.co/v1"
+$env:MODEL_NAME="Qwen/Qwen2.5-72B-Instruct"
+$env:HF_TOKEN="your-token"
 ```
 
-OpenAI example:
+Optional if you want `inference.py` to start the local environment image itself:
 
 ```powershell
-$env:OPENAI_API_KEY="your-key"
-.\.venv\Scripts\python inference.py --provider openai --model gpt-4o-mini
+$env:LOCAL_IMAGE_NAME="data-cleaning-env-local"
+```
+
+Run against an already running local API:
+
+```powershell
+.\.venv\Scripts\python inference.py --base-url http://127.0.0.1:7860
+```
+
+Run the deterministic baseline:
+
+```powershell
+.\.venv\Scripts\python inference.py --dry-run --base-url http://127.0.0.1:7860
 ```
 
 Notes:
 
-- The runner always emits `[START]`, `[STEP]`, and `[END]` logs.
-- If the provider returns invalid JSON or a transient error, the runner falls back to the deterministic policy instead of crashing.
-- A real Gemini-backed end-to-end local run was verified. The provided key hit Gemini free-tier per-minute quota limits after the first few requests, so later steps completed through the built-in fallback path.
+- The runner emits only `[START]`, `[STEP]`, and `[END]` lines to stdout.
+- `HF_TOKEN` has no default value.
+- `API_BASE_URL` and `MODEL_NAME` are the only LLM configuration variables with defaults in the script.
 
 ## API contract
 

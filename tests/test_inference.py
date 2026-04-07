@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import io
+import os
 import socket
 import threading
 import time
@@ -14,7 +15,7 @@ import requests
 import uvicorn
 
 from api.main import app
-from inference import PROVIDER_CONFIGS, main, resolve_provider_config
+from inference import API_BASE_URL, HF_TOKEN, LOCAL_IMAGE_NAME, MODEL_NAME, main
 
 
 def _free_port() -> int:
@@ -49,7 +50,7 @@ class InferenceTests(unittest.TestCase):
         cls.server.should_exit = True
         cls.thread.join(timeout=5)
 
-    def test_dry_run_main_exits_zero_and_emits_end_lines(self) -> None:
+    def test_dry_run_main_exits_zero_and_emits_required_log_shapes(self) -> None:
         stdout = io.StringIO()
         with redirect_stdout(stdout):
             with mock.patch(
@@ -66,13 +67,18 @@ class InferenceTests(unittest.TestCase):
         output = stdout.getvalue()
         self.assertEqual(exit_code, 0)
         self.assertEqual(output.count("[START]"), 3)
+        self.assertGreaterEqual(output.count("[STEP]"), 3)
         self.assertEqual(output.count("[END]"), 3)
+        self.assertIn("env=data-cleaning-env", output)
+        self.assertIn("reward=", output)
+        self.assertIn("done=", output)
+        self.assertIn("score=", output)
 
-    def test_resolve_provider_config_for_gemini(self) -> None:
-        provider, model_name = resolve_provider_config("gemini", None, None)
-        self.assertEqual(provider.api_key_env, "GEMINI_API_KEY")
-        self.assertEqual(provider.base_url, PROVIDER_CONFIGS["gemini"].base_url)
-        self.assertEqual(model_name, "gemini-2.5-flash")
+    def test_submission_env_vars_exist_with_only_allowed_defaults(self) -> None:
+        self.assertEqual(API_BASE_URL, "https://router.huggingface.co/v1")
+        self.assertEqual(MODEL_NAME, "Qwen/Qwen2.5-72B-Instruct")
+        self.assertEqual(HF_TOKEN, os.getenv("HF_TOKEN"))
+        self.assertEqual(LOCAL_IMAGE_NAME, os.getenv("LOCAL_IMAGE_NAME"))
 
 
 if __name__ == "__main__":

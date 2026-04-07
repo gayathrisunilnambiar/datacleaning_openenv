@@ -64,6 +64,11 @@ class ApiTests(unittest.TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response.json()["observation"]["task_id"], "easy")
 
+    def test_reset_defaults_to_easy_when_body_missing(self) -> None:
+        response = self.client.post("/reset")
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.json()["observation"]["task_id"], "easy")
+
     def test_state_unknown_session_returns_404(self) -> None:
         response = self.client.get("/state?session_id=missing-session")
         self.assertEqual(response.status_code, 404)

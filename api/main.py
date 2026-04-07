@@ -168,8 +168,9 @@ def tasks() -> list[TaskInfoModel]:
 
 
 @app.post("/reset", response_model=ResetResponse)
-def reset(payload: ResetRequest) -> ResetResponse:
+def reset(payload: ResetRequest | None = None) -> ResetResponse:
     """Create a new environment session and return the initial observation."""
+    payload = payload or ResetRequest()
     env = DataCleaningEnv(payload.task_id, seed=payload.seed)
     session_id = payload.session_id or str(uuid4())
     _SESSIONS[session_id] = SessionRecord(env=env, last_accessed=_utc_now())

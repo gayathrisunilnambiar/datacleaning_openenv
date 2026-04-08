@@ -8,9 +8,12 @@ import pandas as pd
 from pydantic import ValidationError
 
 from environment.graders import GRADER_REGISTRY
+from environment.logging_config import get_logger
 from environment.models import Action, ActionType, Observation, RewardBreakdown, StepInfo, StepResult
 from environment.tasks import TASK_REGISTRY
 from environment.tasks.base_task import BaseTask
+
+logger = get_logger("env")
 
 
 @dataclass
@@ -61,6 +64,7 @@ class DataCleaningEnv:
         self.episode_reward = 0.0
         self.done = False
         self.initial_similarity = self.grader.partial_score(self.current_df)
+        logger.info("episode_start", task_id=self.task_id, seed=getattr(self.task, "_seed", None))
         return self.state()
 
     def state(self) -> Observation:
@@ -139,6 +143,12 @@ class DataCleaningEnv:
                 steps_budget=self.max_steps,
                 improvement_from_start=round(current_partial - self.initial_similarity, 6),
             )
+            logger.info(
+                "episode_end",
+                task_id=self.task_id,
+                final_score=submit_score,
+                steps_used=self.step_number,
+            )
             observation = self.state()
             return StepResult(
                 observation=observation,
@@ -152,6 +162,7 @@ class DataCleaningEnv:
             changed = self._frame_changed(self.current_df, updated_df)
             error = None
         except Exception as exc:  # noqa: BLE001 - invalid actions should never crash the API
+            logger.error("step_error", error=str(exc))
             updated_df = self.current_df.copy(deep=True)
             changed = False
             error = str(exc)
@@ -223,6 +234,24 @@ class DataCleaningEnv:
             )
 
         observation = self.state()
+
+        logger.info(
+            "step",
+            step_num=self.step_number,
+            action=changed,
+            partial_score=current_partial,
+            dirty_columns_remaining=dirty_remaining,
+        )
+
+        # If episode ended due to max_steps, also log episode_end
+        if max_steps_reached:
+            logger.info(
+                "episode_end",
+                task_id=self.task_id,
+                final_score=grader_score,
+                steps_used=self.step_number,
+            )
+
         return StepResult(
             observation=observation,
             reward=reward_breakdown.total,

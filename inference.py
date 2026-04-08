@@ -14,10 +14,10 @@ from typing import Any
 import requests
 from openai import OpenAI
 
-
 TASK_ORDER = ["easy", "medium", "hard"]
 REQUEST_TIMEOUT_SECONDS = 15
 MAX_LOGICAL_STEPS = 120
+HF_TOKEN_ENV = "HF_TOKEN"
 
 
 @dataclass(frozen=True)
@@ -48,6 +48,11 @@ PROVIDER_CONFIGS: dict[str, ProviderConfig] = {
 def emit(tag: str, payload: dict[str, Any]) -> None:
     """Emit one structured log line with the required competition token prefix."""
     print(f"{tag} {json.dumps(payload, default=str)}", flush=True)
+
+
+def emit_stderr(event: str, **payload: Any) -> None:
+    """Emit auxiliary diagnostics to stderr so stdout stays evaluator-friendly."""
+    print(json.dumps({"event": event, **payload}, default=str), file=sys.stderr, flush=True)
 
 
 def column_has_nulls(observation: dict[str, Any], column: str) -> bool:
@@ -330,6 +335,7 @@ def llm_action(
 
     # --- 429 retry: wait 65 s, then try once more ------------------------
     emit("[RATE_LIMIT]", {"wait_seconds": _RATE_LIMIT_WAIT_SECONDS})
+    emit_stderr("rate_limited", wait_seconds=_RATE_LIMIT_WAIT_SECONDS)
     time.sleep(_RATE_LIMIT_WAIT_SECONDS)
 
     try:
@@ -356,6 +362,14 @@ def request_json(
     response = session.request(method, url, json=payload, timeout=REQUEST_TIMEOUT_SECONDS)
     response.raise_for_status()
     return response.json()
+
+
+def configure_api_session(session: requests.Session) -> None:
+    """Apply optional runtime headers used for hosted deployments."""
+    session.headers.setdefault("User-Agent", "DataCleaningEnv-Baseline/1.0")
+    hf_token = os.getenv(HF_TOKEN_ENV)
+    if hf_token:
+        session.headers.setdefault("Authorization", f"Bearer {hf_token}")
 
 
 def resolve_provider_config(
@@ -402,10 +416,8 @@ def run_task(
     [END] is **always** emitted — even if the episode errors mid-way —
     via a try/finally guard.
     """
-    reset_payload = request_json(session, "POST", f"{base_url}/reset", {"task_id": task_id})
-    session_id = reset_payload["session_id"]
-    observation = reset_payload["observation"]
-    emit("[START]", {"task_id": task_id, "session_id": session_id})
+    session_id: str | None = None
+    observation: dict[str, Any] = {}
 
     # Track last-known score so [END] always has *something* to report.
     last_score: float = 0.0
@@ -413,6 +425,32 @@ def run_task(
     end_emitted = False
 
     try:
+        try:
+            reset_payload = request_json(
+                session,
+                "POST",
+                f"{base_url}/reset",
+                {"task_id": task_id},
+            )
+            session_id = reset_payload["session_id"]
+            observation = reset_payload["observation"]
+            emit("[START]", {"task_id": task_id, "session_id": session_id})
+            emit_stderr("episode_start", task_id=task_id, session_id=session_id, dry_run=dry_run)
+        except Exception as exc:  # noqa: BLE001 - baseline must degrade cleanly
+            emit_stderr("reset_failed", task_id=task_id, error=str(exc))
+            emit("[START]", {"task_id": task_id, "session_id": None})
+            emit(
+                "[END]",
+                {
+                    "task_id": task_id,
+                    "score": 0.0,
+                    "steps": 0,
+                    "error": str(exc),
+                },
+            )
+            end_emitted = True
+            return
+
         for _ in range(MAX_LOGICAL_STEPS):
             action: dict[str, Any] | None = None
 
@@ -435,6 +473,11 @@ def run_task(
                         },
                     )
                     # Fall back to dry-run policy for this step only.
+                    emit_stderr(
+                        "llm_fallback",
+                        step=observation.get("step_number", 0) + 1,
+                        error=str(exc),
+                    )
                     action = dry_run_action(task_id, observation)
 
             if action is None:
@@ -450,6 +493,7 @@ def run_task(
                     },
                 )
                 # Fall back to dry-run policy for this step only.
+                emit_stderr("json_parse_fallback", step=observation.get("step_number", 0) + 1)
                 action = dry_run_action(task_id, observation)
 
             try:
@@ -555,23 +599,29 @@ def main() -> int:
             )
             client = build_live_client(provider)
         except Exception as exc:  # noqa: BLE001 - CLI should fail cleanly
+            emit_stderr("provider_init_failed", error=str(exc))
             print(str(exc), file=sys.stderr)
             return 1
 
     session = requests.Session()
+    configure_api_session(session)
     try:
         for task_id in TASK_ORDER:
-            run_task(
-                session=session,
-                base_url=args.base_url.rstrip("/"),
-                task_id=task_id,
-                dry_run=args.dry_run,
-                client=client,
-                model_name=effective_model,
-            )
-    except Exception as exc:  # noqa: BLE001 - baseline must never crash
-        print(f"fatal_error: {exc}", file=sys.stderr)
-        return 1
+            try:
+                run_task(
+                    session=session,
+                    base_url=args.base_url.rstrip("/"),
+                    task_id=task_id,
+                    dry_run=args.dry_run,
+                    client=client,
+                    model_name=effective_model,
+                )
+            except Exception as exc:  # noqa: BLE001 - baseline must never crash
+                emit_stderr("task_fatal_error", task_id=task_id, error=str(exc))
+                emit(
+                    "[END]",
+                    {"task_id": task_id, "score": 0.0, "steps": 0, "error": str(exc)},
+                )
     finally:
         session.close()
 

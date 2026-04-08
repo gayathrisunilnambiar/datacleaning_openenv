@@ -255,6 +255,7 @@ class HealthResponse(StrictBaseModel):
 
     status: Literal["healthy"] = "healthy"
     version: str = "1.0.0"
+    auth_enabled: bool = False
 
 
 class MetadataResponse(StrictBaseModel):

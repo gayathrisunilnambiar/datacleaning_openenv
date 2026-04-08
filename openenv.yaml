@@ -1,15 +1,9 @@
-# ──────────────────────────────────────────────────────────────────────
-# OpenEnv Specification — data-cleaning-env
-# ──────────────────────────────────────────────────────────────────────
-
 name: data-cleaning-env
-version: 1.0.0
+version: "1.0.0"
 description: >
-  A deterministic, multi-task benchmark for evaluating LLM agents on
-  real-world tabular data cleaning. Each task presents a dirty DataFrame
-  with reproducible issues (duplicates, nulls, type errors, outliers,
-  format inconsistencies) and grades the agent on column-level similarity
-  to a hidden ground truth.
+  A deterministic, multi-task OpenEnv benchmark for iterative tabular data
+  cleaning. Agents improve dirty DataFrames step by step and are graded on
+  process quality as well as final table similarity.
 tags:
   - openenv
   - data-cleaning
@@ -17,50 +11,42 @@ tags:
   - real-world
   - llm-evaluation
 
-# ──────────────────────────────────────────────────────────────────────
-# Action Space
-# ──────────────────────────────────────────────────────────────────────
-
 action_space:
   drop_duplicates:
     type: object
-    description: Remove all duplicate rows from the DataFrame.
+    description: Remove duplicate rows from the current DataFrame.
     required_params: []
     optional_params: []
     column_required: false
 
   fill_nulls:
     type: object
-    description: >
-      Fill null/NaN values in a specific column using the chosen strategy.
-    column_required: true
+    description: Fill null values in a specific column.
     required_params:
       - name: strategy
         type: string
         enum: [mean, median, mode, constant]
-        description: Imputation strategy for null values.
+        description: Imputation strategy.
     optional_params:
       - name: value
         type: any
-        description: >
-          Fill value when strategy is "constant". Required if strategy=constant.
+        description: Required when strategy is constant.
+    column_required: true
 
   cast_column:
     type: object
-    description: Cast a column to a target data type.
-    column_required: true
+    description: Cast a column to a target dtype.
     required_params:
       - name: dtype
         type: string
         enum: [int, float, str, bool, datetime]
-        description: Target data type for the column.
+        description: Target dtype.
     optional_params: []
+    column_required: true
 
   remove_outliers:
     type: object
-    description: >
-      Clip outlier values in a numeric column using IQR or z-score method.
-    column_required: true
+    description: Clip outliers in a numeric column.
     required_params:
       - name: method
         type: string
@@ -69,80 +55,64 @@ action_space:
     optional_params:
       - name: threshold
         type: float
-        description: >
-          Sensitivity threshold. Default 1.5 for IQR, 3.0 for z-score.
+        description: Optional sensitivity override.
+    column_required: true
 
   rename_column:
     type: object
     description: Rename an existing column.
-    column_required: true
     required_params:
       - name: new_name
         type: string
-        description: The new column name (must not collide with existing columns).
+        description: Replacement column name.
     optional_params: []
+    column_required: true
 
   normalize_values:
     type: object
-    description: >
-      Map inconsistent string representations to canonical values in a column.
-    column_required: true
+    description: Map inconsistent categorical values to canonical labels.
     required_params:
       - name: mapping
         type: "dict[str, any]"
-        description: >
-          Dictionary mapping dirty values to their clean replacements.
-          Example: {"M": "Male", "m": "Male", "F": "Female"}
+        description: Dirty-to-clean value mapping.
     optional_params: []
+    column_required: true
 
   submit:
     type: object
-    description: >
-      End the episode and trigger final grading. No column or params allowed.
-    column_required: false
+    description: End the episode and trigger final grading.
     required_params: []
     optional_params: []
-
-# ──────────────────────────────────────────────────────────────────────
-# Observation Space
-# ──────────────────────────────────────────────────────────────────────
+    column_required: false
 
 observation_space:
   task_id:
     type: string
-    description: Unique identifier for the active cleaning task.
+    description: Active task identifier.
   step_number:
     type: integer
-    description: Number of steps taken so far in the current episode (≥ 0).
+    description: Number of steps taken in the current episode.
   current_df:
     type: "list[dict[str, any]]"
-    description: >
-      Current DataFrame serialized as a list of row-dicts (JSON records format).
+    description: Current DataFrame serialized as JSON records.
   dirty_columns:
     type: "list[str]"
-    description: >
-      Column names that still differ from the hidden ground truth.
+    description: Columns that still differ from the hidden ground truth.
   columns_meta:
     type: "dict[str, str]"
-    description: >
-      Mapping of column name to its current pandas dtype string.
+    description: Current pandas dtype string for each column.
   episode_reward_so_far:
     type: float
-    description: Cumulative reward collected in this episode.
+    description: Cumulative reward earned so far.
   done:
     type: boolean
-    description: >
-      Whether the episode has ended (via submit or max_steps exhaustion).
+    description: Whether the episode has ended.
   max_steps:
     type: integer
-    description: Maximum number of steps allowed for the current task.
+    description: Maximum step budget for the active task.
   task_description:
     type: string
-    description: Human-readable description of the cleaning task.
-
-# ──────────────────────────────────────────────────────────────────────
-# Tasks
-# ──────────────────────────────────────────────────────────────────────
+    description: Human-readable task description.
 
 tasks:
   - id: easy
@@ -150,26 +120,24 @@ tasks:
     domain: Employee Records
     rows: 50
     columns: 6
-    column_names: [id, name, age, department, salary, join_date]
     max_steps: 20
     description: >
-      Employee records with duplicate rows and missing values
-      in the 'age' and 'salary' columns.
+      Employee records with duplicate rows and missing values in the age and
+      salary columns.
     issues:
       - duplicate_rows
-      - missing_values
+      - missing_age
+      - missing_salary
 
   - id: medium
     difficulty: medium
     domain: Sales Transactions
     rows: 120
     columns: 8
-    column_names: [txn_id, date, product, category, quantity, unit_price, total, region]
     max_steps: 30
     description: >
-      Sales transactions with mixed string formats in numeric columns,
-      inconsistent date formats, arithmetic errors in 'total',
-      and outliers in 'unit_price'.
+      Sales transactions with mixed numeric string formats, inconsistent date
+      formats, arithmetic errors in total, and outliers in unit_price.
     issues:
       - quantity_as_messy_string
       - unit_price_as_messy_string
@@ -182,22 +150,11 @@ tasks:
     domain: Hospital Admissions
     rows: 200
     columns: 10
-    column_names:
-      - patient_id
-      - admission_date
-      - discharge_date
-      - diagnosis
-      - ward
-      - age
-      - gender
-      - weight_kg
-      - blood_type
-      - readmitted
     max_steps: 40
     description: >
-      Hospital admissions with duplicates, missing values, mixed date
-      formats, inconsistent gender labels, mixed weight units (kg/lbs),
-      blood-type typos, and heterogeneous boolean encoding.
+      Hospital admissions with duplicates, missing values, mixed date formats,
+      inconsistent gender labels, mixed weight units, blood-type typos, and
+      heterogeneous boolean encoding.
     issues:
       - duplicate_rows
       - missing_age
@@ -208,27 +165,34 @@ tasks:
       - blood_type_typos
       - mixed_boolean_readmitted
 
-# ──────────────────────────────────────────────────────────────────────
-# Reward
-# ──────────────────────────────────────────────────────────────────────
+  - id: random
+    difficulty: variable
+    domain: Procedural
+    rows: 60-150
+    columns: variable
+    max_steps: 25
+    description: >
+      Procedurally generated task with a random domain and 2-4 injected data
+      quality issues. Reproducible when a seed is provided.
+    issues:
+      - duplicate_rows
+      - missing_numeric
+      - missing_categorical
+      - type_as_string
+      - mixed_dates
+      - outliers
+      - inconsistent_categorical
 
 reward_range: [0.0, 1.0]
 
 reward_shaping:
   column_improvement: >
-    Per-step partial credit — sum of per-column similarity deltas
-    (new_score − old_score) for every column that moved closer
-    to the ground truth.
+    Sum of per-column similarity deltas for columns that moved closer to the
+    ground truth on this step.
   submit_bonus: >
-    +0.30 bonus awarded on submit if the overall grader similarity
-    score is ≥ 0.80.
+    +0.30 when submit is called and overall similarity is greater than 0.80.
   no_op_penalty: >
-    −0.05 penalty if the action produced zero observable change
-    in the DataFrame (redundant or ineffective action).
-
-# ──────────────────────────────────────────────────────────────────────
-# Endpoints
-# ──────────────────────────────────────────────────────────────────────
+    -0.05 when an action causes zero observable DataFrame change.
 
 endpoints:
   root: GET /
@@ -239,22 +203,10 @@ endpoints:
   state: GET /state
   reset: POST /reset
   step: POST /step
+  submit: POST /submit
   mcp: POST /mcp
   validate: POST /validate
-
-# ──────────────────────────────────────────────────────────────────────
-# Deployment
-# ──────────────────────────────────────────────────────────────────────
-
-docker:
-  build: "docker build -t data-cleaning-env ."
-  run: "docker run -p 7860:7860 data-cleaning-env"
-
-hf_space: https://sanvihs2005-data-cleaning-env.hf.space
-
-# ──────────────────────────────────────────────────────────────────────
-# Baseline Scores
-# ──────────────────────────────────────────────────────────────────────
+  admin_sessions: GET /admin/sessions
 
 baseline_scores:
   dry_run:
@@ -265,3 +217,32 @@ baseline_scores:
     easy: 0.3921
     medium: 0.2930
     hard: 0.2493
+
+test_results:
+  total_tests: 26
+  passing: 26
+  failing: 0
+  last_verified: "2026-04-08"
+
+authentication:
+  type: optional_api_key
+  header: X-API-Key
+  enforcement: only when API_KEY env var is set
+  competition_note: >
+    HF Space runs with API_KEY unset.
+    All OpenEnv endpoints freely accessible to validator.
+  protected_routes:
+    - GET /admin/sessions
+    - POST /submit
+
+compliance:
+  hf_space_url: https://sanvihs2005-data-cleaning-env.hf.space
+  docker_verified: true
+  inference_runtime_seconds: 18
+  openenv_spec_version: "1.0"
+
+docker:
+  build: docker build -t data-cleaning-env .
+  run: docker run -p 7860:7860 data-cleaning-env
+
+hf_space: https://sanvihs2005-data-cleaning-env.hf.space

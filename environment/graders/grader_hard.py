@@ -68,12 +68,7 @@ class HardGrader(BaseGrader):
 # ---------------------------------------------------------------------------
 
 def diagnose(cleaned_df: pd.DataFrame, ground_truth_df: pd.DataFrame) -> None:
-    """Print a detailed per-check breakdown showing exact score and failure reason.
-
-    Covers every sub-check that HardGrader.score() uses:
-      row_count, age (alignment + dtype), admission_date, gender,
-      weight_kg (column_scores), blood_type, readmitted.
-    """
+    
     grader = HardGrader()
     col_scores = grader.column_scores(cleaned_df)
     truth = ground_truth_df
@@ -100,10 +95,8 @@ def diagnose(cleaned_df: pd.DataFrame, ground_truth_df: pd.DataFrame) -> None:
                          for c in cols}
             print(f"    idx={idx}  FOUND={found_vals}  EXPECTED={truth_vals}")
 
-    # Align frames the same way the grader does
     current_aligned, truth_aligned = grader._aligned_frames(cleaned_df)
 
-    # ── 1. Row count ────────────────────────────────────────────────────────
     row_count_score = 1.0 if len(cleaned_df) == len(truth) else 0.0
     _header("row_count", 0.15, row_count_score)
     print(f"  Cleaned rows: {len(cleaned_df)}  |  Expected rows: {len(truth)}")
@@ -113,7 +106,6 @@ def diagnose(cleaned_df: pd.DataFrame, ground_truth_df: pd.DataFrame) -> None:
     else:
         print("  ✓ Row count matches ground truth")
 
-    # ── 2. Age — alignment + dtype ──────────────────────────────────────────
     age_alignment = col_scores.get("age", 0.0)
     age_series = grader._series_from_column(cleaned_df, "age")
     age_dtype_score = HardGrader._age_dtype_ready(age_series)
@@ -129,7 +121,6 @@ def diagnose(cleaned_df: pd.DataFrame, ground_truth_df: pd.DataFrame) -> None:
         _show_failures(bad, current_aligned[["age"]], truth_aligned[["age"]], ["age"],
                        "age value mismatch")
 
-    # ── 3. Admission date ───────────────────────────────────────────────────
     adm_series = grader._series_from_column(cleaned_df, "admission_date")
     if pd.api.types.is_datetime64_any_dtype(adm_series):
         admission_score = 1.0
@@ -147,7 +138,6 @@ def diagnose(cleaned_df: pd.DataFrame, ground_truth_df: pd.DataFrame) -> None:
         if not bad_samples.empty:
             print(f"  ✗ Non-ISO values (up to 5): {bad_samples.tolist()}")
 
-    # ── 4. Gender ────────────────────────────────────────────────────────────
     gender_raw = grader._series_from_column(cleaned_df, "gender").astype(str).str.strip()
     valid_genders = {"Male", "Female"}
     gender_valid_mask = gender_raw.isin(valid_genders)
@@ -165,7 +155,6 @@ def diagnose(cleaned_df: pd.DataFrame, ground_truth_df: pd.DataFrame) -> None:
     else:
         print("  ✓ All gender values are 'Male' or 'Female'")
 
-    # ── 5. Weight_kg (column similarity score) ──────────────────────────────
     weight_score = col_scores.get("weight_kg", 0.0)
     _header("weight_kg", 0.10, weight_score)
     if weight_score < 1.0 and "weight_kg" in current_aligned.columns and "weight_kg" in truth_aligned.columns:
@@ -182,7 +171,6 @@ def diagnose(cleaned_df: pd.DataFrame, ground_truth_df: pd.DataFrame) -> None:
     else:
         print("  ✓ weight_kg is fully aligned with ground truth")
 
-    # ── 6. Blood type ────────────────────────────────────────────────────────
     bt_raw = grader._series_from_column(cleaned_df, "blood_type").astype(str).str.strip()
     valid_bt = {"A+", "A-", "B+", "B-", "AB+", "AB-", "O+", "O-"}
     bt_valid_mask = bt_raw.isin(valid_bt)
@@ -197,7 +185,6 @@ def diagnose(cleaned_df: pd.DataFrame, ground_truth_df: pd.DataFrame) -> None:
     else:
         print("  ✓ All blood_type values are canonical (A+/A-/B+/B-/AB+/AB-/O+/O-)")
 
-    # ── 7. Readmitted ────────────────────────────────────────────────────────
     readmitted_raw = grader._series_from_column(cleaned_df, "readmitted")
     readmitted_score = 1.0 if pd.api.types.is_bool_dtype(readmitted_raw) else 0.0
     _header("readmitted", 0.15, readmitted_score)
@@ -208,7 +195,6 @@ def diagnose(cleaned_df: pd.DataFrame, ground_truth_df: pd.DataFrame) -> None:
     else:
         print("  ✓ readmitted is bool dtype")
 
-    # ── Overall ──────────────────────────────────────────────────────────────
     total = (
         0.15 * row_count_score
         + 0.10 * age_score
@@ -239,10 +225,6 @@ def diagnose(cleaned_df: pd.DataFrame, ground_truth_df: pd.DataFrame) -> None:
     return
 
 
-# ---------------------------------------------------------------------------
-# __main__ — run dry-run sequence then diagnose
-# ---------------------------------------------------------------------------
-
 if __name__ == "__main__":
     from environment.env import DataCleaningEnv
 
@@ -255,7 +237,6 @@ if __name__ == "__main__":
     grader_ref = HardGrader()
     ground_truth = grader_ref.truth_df.copy()
 
-    # ── Apply the deterministic dry-run cleaning sequence ──────────────────
     # Step 1: drop_duplicates
     r = env.step({"action_type": "drop_duplicates"})
     print(f"[1] drop_duplicates        reward={r.reward:+.4f}  done={r.done}")

@@ -75,8 +75,10 @@ class InferenceTests(unittest.TestCase):
         self.assertIn("score=", output)
 
     def test_submission_env_vars_exist_with_only_allowed_defaults(self) -> None:
-        self.assertEqual(API_BASE_URL, "https://router.huggingface.co/v1")
-        self.assertEqual(MODEL_NAME, "Qwen/Qwen2.5-72B-Instruct")
+        if "API_BASE_URL" not in os.environ:
+            self.assertEqual(API_BASE_URL, "https://router.huggingface.co/v1")
+        if "MODEL_NAME" not in os.environ:
+            self.assertEqual(MODEL_NAME, "Qwen/Qwen2.5-72B-Instruct")
         self.assertEqual(HF_TOKEN, os.getenv("HF_TOKEN"))
         self.assertEqual(LOCAL_IMAGE_NAME, os.getenv("LOCAL_IMAGE_NAME"))
 

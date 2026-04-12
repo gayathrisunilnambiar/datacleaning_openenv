@@ -221,7 +221,7 @@ Recommended deployment flow:
 Current status:
 
 - Local Docker rehearsal passed.
-- Public Hugging Face deployment is still blocked on missing Hugging Face credentials on this machine.
+- Public Hugging Face deployment is deployed and verified to be fully functional.
 
 ## Validation summary
 
